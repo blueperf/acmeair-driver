@@ -81,21 +81,20 @@ public class GenerateJWTFunction extends AbstractFunction {
     } 
        
     //Get the private key to generate JWTs and create the public JWK to send to the booking/customer service.
-		try {
-			FileInputStream is = new FileInputStream(keyStoreLocation);
+    try {
+      FileInputStream is = new FileInputStream(keyStoreLocation);
 
-			// For now use the p12 key generated for the service
-			KeyStore keystore = KeyStore.getInstance(keyStoreType);
-			keystore.load(is, keyStorePassword.toCharArray());
-			privateKey = (PrivateKey) keystore.getKey(keyStoreAlias, keyStorePassword.toCharArray());
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+      // For now use the p12 key generated for the service
+      KeyStore keystore = KeyStore.getInstance(keyStoreType);
+      keystore.load(is, keyStorePassword.toCharArray());
+      privateKey = (PrivateKey) keystore.getKey(keyStoreAlias, keyStorePassword.toCharArray());
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
 
   }
 
   public String execute(SampleResult arg0, Sampler arg1) throws InvalidVariableException {
-
 
     if (count > 0 && token !="") {
       count = (count + 1) % 50;
@@ -103,29 +102,28 @@ public class GenerateJWTFunction extends AbstractFunction {
     }
     count = (count + 1) % 10;
 
-
     try {
       JwtClaims claims = new JwtClaims();
-		  claims.setIssuer(jwtIssuer);  
+      claims.setIssuer(jwtIssuer);  
 
-		  claims.setExpirationTimeMinutesInTheFuture(15); 
-		  claims.setGeneratedJwtId(); 
-		  claims.setIssuedAtToNow(); 
-		  claims.setSubject(jwtSubject); 
+      claims.setExpirationTimeMinutesInTheFuture(15); 
+      claims.setGeneratedJwtId(); 
+      claims.setIssuedAtToNow(); 
+      claims.setSubject(jwtSubject); 
       claims.setClaim("upn", jwtSubject); 
-		  List<String> groups = Arrays.asList(jwtGroup);
+      List<String> groups = Arrays.asList(jwtGroup);
       claims.setStringListClaim("groups", groups);
       
       if (jwtAudience != null) {
         claims.setAudience(jwtAudience);
       }
-		  
-		  JsonWebSignature jws = new JsonWebSignature();
-		  jws.setPayload(claims.toJson());
-		  jws.setKey(privateKey);      
-		  jws.setAlgorithmHeaderValue("RS256");
+      
+      JsonWebSignature jws = new JsonWebSignature();
+      jws.setPayload(claims.toJson());
+      jws.setKey(privateKey);      
+      jws.setAlgorithmHeaderValue("RS256");
       jws.setHeader("typ", "JWT");
-		
+    
       token = jws.getCompactSerialization();
     } catch (Exception exception) {
       exception.printStackTrace(); 

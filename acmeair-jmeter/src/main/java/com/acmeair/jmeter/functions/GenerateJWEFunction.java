@@ -25,148 +25,147 @@ import org.jose4j.jwt.JwtClaims;
 public class GenerateJWEFunction extends AbstractFunction {
 
   private static String keyStoreLocation;
-	private static String keyStoreType;
-	private static String keyStorePassword;
-	private static String keyStoreAlias;
-	private static String jwtIssuer;
-	private static String jwtGroup;
-	private static String jwtSubject;
-	private static String jwtAudience = null;
+  private static String keyStoreType;
+  private static String keyStorePassword;
+  private static String keyStoreAlias;
+  private static String jwtIssuer;
+  private static String jwtGroup;
+  private static String jwtSubject;
+  private static String jwtAudience = null;
 
-	private static final List<String> DESC = Arrays.asList("generate_jwe");
-	private static final String KEY = "__generateJwe";
+  private static final List<String> DESC = Arrays.asList("generate_jwe");
+  private static final String KEY = "__generateJwe";
 
-	private List<CompoundVariable> parameters = Collections.emptyList();
+  private List<CompoundVariable> parameters = Collections.emptyList();
 
-	private static String token = "";
-	private static int count = 0;
+  private static String token = "";
+  private static int count = 0;
 
-	private static PrivateKey privateKey;
-	private static RSAPublicKey publicKey;
+  private static PrivateKey privateKey;
+  private static RSAPublicKey publicKey;
 
-  	private static String JWE_ALGORITHM_HEADER_VALUE;
+  private static String JWE_ALGORITHM_HEADER_VALUE;
 
-
-	static {
-		if (System.getProperty("JWT.keystore.location") == null) {
-			keyStoreLocation = "/keyfile/key.p12";
-		} else {
-			keyStoreLocation = System.getProperty("JWT.keystore.location");
-		}
-		if (System.getProperty("JWT.keystore.type") == null) {
-			keyStoreType = "PKCS12";
-		} else {
-			keyStoreType = System.getProperty("JWT.keystore.type");
-		}
-		if (System.getProperty("JWT.keystore.password") == null) {
-			keyStorePassword = "secret";
-		} else {
-			keyStorePassword = System.getProperty("JWT.keystore.password");
-		}
-		if (System.getProperty("JWT.keystore.alias") == null) {
-			keyStoreAlias = "default";
-		} else {
-			keyStoreAlias = System.getProperty("JWT.keystore.alias");
-		}
-		if (System.getProperty("JWT.issuer") == null) {
-			jwtIssuer = "http://acmeair-ms";
-		} else {
-			jwtIssuer = System.getProperty("JWT.issuer");
-		}
-		if (System.getProperty("JWT.group") == null) {
-			jwtGroup= "user";
-		} else {
-			jwtGroup = System.getProperty("JWT.group");
-		}
-		if (System.getProperty("JWT.subject") == null) {
-			jwtSubject = "subject";
-		} else {
-			jwtSubject = System.getProperty("JWT.subject");
-		} 
-	  if (System.getProperty("JWE.algoritm.header.value") == null) {
+  static {
+    if (System.getProperty("JWT.keystore.location") == null) {
+      keyStoreLocation = "/keyfile/key.p12";
+    } else {
+      keyStoreLocation = System.getProperty("JWT.keystore.location");
+    }
+    if (System.getProperty("JWT.keystore.type") == null) {
+      keyStoreType = "PKCS12";
+    } else {
+      keyStoreType = System.getProperty("JWT.keystore.type");
+    }
+    if (System.getProperty("JWT.keystore.password") == null) {
+      keyStorePassword = "secret";
+    } else {
+      keyStorePassword = System.getProperty("JWT.keystore.password");
+    }
+    if (System.getProperty("JWT.keystore.alias") == null) {
+      keyStoreAlias = "default";
+    } else {
+      keyStoreAlias = System.getProperty("JWT.keystore.alias");
+    }
+    if (System.getProperty("JWT.issuer") == null) {
+      jwtIssuer = "http://acmeair-ms";
+    } else {
+      jwtIssuer = System.getProperty("JWT.issuer");
+    }
+    if (System.getProperty("JWT.group") == null) {
+      jwtGroup= "user";
+    } else {
+      jwtGroup = System.getProperty("JWT.group");
+    }
+    if (System.getProperty("JWT.subject") == null) {
+      jwtSubject = "subject";
+    } else {
+      jwtSubject = System.getProperty("JWT.subject");
+    } 
+    if (System.getProperty("JWE.algoritm.header.value") == null) {
       JWE_ALGORITHM_HEADER_VALUE = "RSA-OAEP";
     } else {
       JWE_ALGORITHM_HEADER_VALUE = System.getProperty("JWE.algoritm.header.value");
-		}
-		if (System.getProperty("JWT.audience") == null) {
-			jwtAudience = System.getProperty("JWT.audience");
-		} 
+    }
+    if (System.getProperty("JWT.audience") == null) {
+      jwtAudience = System.getProperty("JWT.audience");
+    } 
 
-		//Get the private key to generate JWTs and create the public JWK to send to the booking/customer service.
-		try {
-			FileInputStream is = new FileInputStream(keyStoreLocation);
+    //Get the private key to generate JWTs and create the public JWK to send to the booking/customer service.
+    try {
+      FileInputStream is = new FileInputStream(keyStoreLocation);
 
-			// For now use the p12 key generated for the service
-			KeyStore keystore = KeyStore.getInstance(keyStoreType);
-			keystore.load(is, keyStorePassword.toCharArray());
-			privateKey = (PrivateKey) keystore.getKey(keyStoreAlias, keyStorePassword.toCharArray());
-			Certificate cert = keystore.getCertificate(keyStoreAlias);  
-			publicKey = (RSAPublicKey) cert.getPublicKey();  
+      // For now use the p12 key generated for the service
+      KeyStore keystore = KeyStore.getInstance(keyStoreType);
+      keystore.load(is, keyStorePassword.toCharArray());
+      privateKey = (PrivateKey) keystore.getKey(keyStoreAlias, keyStorePassword.toCharArray());
+      Certificate cert = keystore.getCertificate(keyStoreAlias);  
+      publicKey = (RSAPublicKey) cert.getPublicKey();  
 
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
 
-	}
+  }
 
-	public String execute(SampleResult arg0, Sampler arg1) throws InvalidVariableException {
+  public String execute(SampleResult arg0, Sampler arg1) throws InvalidVariableException {
 
-		if (count > 0 && token !="") {
-			count = (count + 1) % 50;
-			return token;
-		}
-		count = (count + 1) % 10;   
+    if (count > 0 && token !="") {
+      count = (count + 1) % 50;
+      return token;
+    }
+    count = (count + 1) % 10;   
 
-		try {
+    try {
 
-			JwtClaims claims = new JwtClaims();
-			claims.setIssuer(jwtIssuer);  
+      JwtClaims claims = new JwtClaims();
+      claims.setIssuer(jwtIssuer);  
 
-			claims.setExpirationTimeMinutesInTheFuture(15); 
-			claims.setGeneratedJwtId(); 
-			claims.setIssuedAtToNow(); 
-			claims.setSubject(jwtSubject); 
-			claims.setClaim("upn", jwtSubject); 
-			List<String> groups = Arrays.asList(jwtGroup);
-			claims.setStringListClaim("groups", groups);
+      claims.setExpirationTimeMinutesInTheFuture(15); 
+      claims.setGeneratedJwtId(); 
+      claims.setIssuedAtToNow(); 
+      claims.setSubject(jwtSubject); 
+      claims.setClaim("upn", jwtSubject); 
+      List<String> groups = Arrays.asList(jwtGroup);
+      claims.setStringListClaim("groups", groups);
 
-			if (jwtAudience != null) {
-				claims.setAudience(jwtAudience);
-			}
+      if (jwtAudience != null) {
+        claims.setAudience(jwtAudience);
+      }
 
-			JsonWebSignature jws = new JsonWebSignature();
-			jws.setPayload(claims.toJson());
-			jws.setKey(privateKey);      
-			jws.setAlgorithmHeaderValue("RS256");
-			jws.setHeader("typ", "JWT");
-			String innerJwt = jws.getCompactSerialization();
-		
-			JsonWebEncryption jwe = new JsonWebEncryption();
-			jwe.setAlgorithmHeaderValue(JWE_ALGORITHM_HEADER_VALUE);
-			jwe.setEncryptionMethodHeaderParameter(ContentEncryptionAlgorithmIdentifiers.AES_256_GCM);
-			jwe.setKey(publicKey);
-			jwe.setContentTypeHeaderValue("JWT");
-			jwe.setPayload(innerJwt);
-			token = jwe.getCompactSerialization();
-			
-		} catch (Exception e) {
-			e.printStackTrace();		
-		}
-	
-		return token;
+      JsonWebSignature jws = new JsonWebSignature();
+      jws.setPayload(claims.toJson());
+      jws.setKey(privateKey);      
+      jws.setAlgorithmHeaderValue("RS256");
+      jws.setHeader("typ", "JWT");
+      String innerJwt = jws.getCompactSerialization();
+    
+      JsonWebEncryption jwe = new JsonWebEncryption();
+      jwe.setAlgorithmHeaderValue(JWE_ALGORITHM_HEADER_VALUE);
+      jwe.setEncryptionMethodHeaderParameter(ContentEncryptionAlgorithmIdentifiers.AES_256_GCM);
+      jwe.setKey(publicKey);
+      jwe.setContentTypeHeaderValue("JWT");
+      jwe.setPayload(innerJwt);
+      token = jwe.getCompactSerialization();
+      
+    } catch (Exception e) {
+      e.printStackTrace();		
+    }
+  
+    return token;
 
-	}
-	@Override
-	public String getReferenceKey() {
-		return KEY;
-	}
+  }
+  @Override
+  public String getReferenceKey() {
+    return KEY;
+  }
 
-	@Override
-	public void setParameters(Collection<CompoundVariable> arg0) throws InvalidVariableException {
-		parameters = new ArrayList<CompoundVariable>(arg0);
-	}
+  @Override
+  public void setParameters(Collection<CompoundVariable> arg0) throws InvalidVariableException {
+    parameters = new ArrayList<CompoundVariable>(arg0);
+  }
 
-	public List<String> getArgumentDesc() {
-		return DESC;
-	}
+  public List<String> getArgumentDesc() {
+    return DESC;
+  }
 }
