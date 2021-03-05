@@ -1,20 +1,12 @@
 package com.acmeair.jmeter.functions;
 
 import java.io.FileInputStream;
-import java.security.Key;
 import java.security.KeyStore;
 import java.security.PrivateKey;
-import java.security.cert.Certificate;
-import java.security.interfaces.RSAPrivateKey;
-import java.security.interfaces.RSAPublicKey;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 
 
@@ -24,9 +16,8 @@ import org.apache.jmeter.functions.InvalidVariableException;
 import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.samplers.Sampler;
 
-
-import com.auth0.jwt.JWT;
-import com.auth0.jwt.algorithms.Algorithm;
+import org.jose4j.jws.JsonWebSignature;
+import org.jose4j.jwt.JwtClaims;
 
 public class GenerateJWTFunction extends AbstractFunction {
 
@@ -37,6 +28,7 @@ public class GenerateJWTFunction extends AbstractFunction {
   private static String jwtIssuer;
   private static String jwtGroup;
   private static String jwtSubject;
+  private static String jwtAudience = null;
 
   private static final List<String> DESC = Arrays.asList("generate_jwt");
   private static final String KEY = "__generateJwt";
@@ -46,7 +38,7 @@ public class GenerateJWTFunction extends AbstractFunction {
   private static String token = "";
   private static int count = 0;
 
-  public static Algorithm algorithm;
+  private static PrivateKey privateKey;
 
   static {
     if (System.getProperty("JWT.keystore.location") == null) {
@@ -84,29 +76,21 @@ public class GenerateJWTFunction extends AbstractFunction {
     } else {
       jwtSubject = System.getProperty("JWT.subject");
     }
+    if (System.getProperty("JWT.audience") == null) {
+      jwtAudience = System.getProperty("JWT.audience");
+    } 
+       
+    //Get the private key to generate JWTs and create the public JWK to send to the booking/customer service.
+		try {
+			FileInputStream is = new FileInputStream(keyStoreLocation);
 
-
-    FileInputStream is;
-    try {
-      is = new FileInputStream(keyStoreLocation);
-
-
-      // Get Private Key
-      KeyStore keystore = KeyStore.getInstance(keyStoreType);
-      keystore.load(is, keyStorePassword.toCharArray());
-      Key key = keystore.getKey(keyStoreAlias, keyStorePassword.toCharArray());
-
-
-      if (key instanceof PrivateKey) {
-
-        // Get public key and create jwt token
-        Certificate cert = keystore.getCertificate(keyStoreAlias);       
-        RSAPublicKey publicKey = (RSAPublicKey) cert.getPublicKey();        
-        algorithm = Algorithm.RSA256(publicKey,(RSAPrivateKey) key);
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+			// For now use the p12 key generated for the service
+			KeyStore keystore = KeyStore.getInstance(keyStoreType);
+			keystore.load(is, keyStorePassword.toCharArray());
+			privateKey = (PrivateKey) keystore.getKey(keyStoreAlias, keyStorePassword.toCharArray());
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 
   }
 
@@ -115,37 +99,41 @@ public class GenerateJWTFunction extends AbstractFunction {
 
     if (count > 0 && token !="") {
       count = (count + 1) % 50;
-      //System.out.println("count is not 0, returning" + token);
       return token;
     }
     count = (count + 1) % 10;
 
 
     try {
-      LocalDateTime now = LocalDateTime.now();
-      Instant instant = now.atZone(ZoneId.systemDefault()).toInstant();
-      Date date = Date.from(instant);
+      JwtClaims claims = new JwtClaims();
+		  claims.setIssuer(jwtIssuer);  
 
-      LocalDateTime plusHour = LocalDateTime.now().plusHours(1);
-      Instant instantPlusHour = plusHour.atZone(ZoneId.systemDefault()).toInstant();
-      Date datePlusHour = Date.from(instantPlusHour);
-
-      token = JWT.create()
-          .withSubject(jwtSubject)
-          .withIssuer(jwtIssuer)
-          .withExpiresAt(datePlusHour)
-          .withIssuedAt(date)
-          .withArrayClaim("groups", new String[]{jwtGroup})
-          .withClaim("upn", jwtSubject)
-          .withJWTId("jti")
-          .withAudience("https://audience.com")
-          .sign(algorithm);
+		  claims.setExpirationTimeMinutesInTheFuture(15); 
+		  claims.setGeneratedJwtId(); 
+		  claims.setIssuedAtToNow(); 
+		  claims.setSubject(jwtSubject); 
+      claims.setClaim("upn", jwtSubject); 
+		  List<String> groups = Arrays.asList(jwtGroup);
+      claims.setStringListClaim("groups", groups);
+      
+      if (jwtAudience != null) {
+        claims.setAudience(jwtAudience);
+      }
+		  
+		  JsonWebSignature jws = new JsonWebSignature();
+		  jws.setPayload(claims.toJson());
+		  jws.setKey(privateKey);      
+		  jws.setAlgorithmHeaderValue("RS256");
+      jws.setHeader("typ", "JWT");
+		
+      token = jws.getCompactSerialization();
     } catch (Exception exception) {
-
       exception.printStackTrace(); 
     }    
+
     return token;
   }
+
   @Override
   public String getReferenceKey() {
     return KEY;

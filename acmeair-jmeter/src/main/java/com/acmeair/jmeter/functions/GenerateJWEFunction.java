@@ -19,19 +19,19 @@ import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.samplers.Sampler;
 import org.jose4j.jwe.ContentEncryptionAlgorithmIdentifiers;
 import org.jose4j.jwe.JsonWebEncryption;
-import org.jose4j.jwk.RsaJsonWebKey;
 import org.jose4j.jws.JsonWebSignature;
 import org.jose4j.jwt.JwtClaims;
 
 public class GenerateJWEFunction extends AbstractFunction {
 
-	private static String keyStoreLocation;
+  private static String keyStoreLocation;
 	private static String keyStoreType;
 	private static String keyStorePassword;
 	private static String keyStoreAlias;
 	private static String jwtIssuer;
 	private static String jwtGroup;
 	private static String jwtSubject;
+	private static String jwtAudience = null;
 
 	private static final List<String> DESC = Arrays.asList("generate_jwe");
 	private static final String KEY = "__generateJwe";
@@ -44,7 +44,8 @@ public class GenerateJWEFunction extends AbstractFunction {
 	private static PrivateKey privateKey;
 	private static RSAPublicKey publicKey;
 
-	//public static Algorithm algorithm;
+  	private static String JWE_ALGORITHM_HEADER_VALUE;
+
 
 	static {
 		if (System.getProperty("JWT.keystore.location") == null) {
@@ -81,15 +82,22 @@ public class GenerateJWEFunction extends AbstractFunction {
 			jwtSubject = "subject";
 		} else {
 			jwtSubject = System.getProperty("JWT.subject");
+		} 
+	  if (System.getProperty("JWE.algoritm.header.value") == null) {
+      JWE_ALGORITHM_HEADER_VALUE = "RSA-OAEP";
+    } else {
+      JWE_ALGORITHM_HEADER_VALUE = System.getProperty("JWE.algoritm.header.value");
 		}
-
+		if (System.getProperty("JWT.audience") == null) {
+			jwtAudience = System.getProperty("JWT.audience");
+		} 
 
 		//Get the private key to generate JWTs and create the public JWK to send to the booking/customer service.
 		try {
 			FileInputStream is = new FileInputStream(keyStoreLocation);
 
 			// For now use the p12 key generated for the service
-			KeyStore keystore = KeyStore.getInstance("PKCS12");
+			KeyStore keystore = KeyStore.getInstance(keyStoreType);
 			keystore.load(is, keyStorePassword.toCharArray());
 			privateKey = (PrivateKey) keystore.getKey(keyStoreAlias, keyStorePassword.toCharArray());
 			Certificate cert = keystore.getCertificate(keyStoreAlias);  
@@ -103,54 +111,49 @@ public class GenerateJWEFunction extends AbstractFunction {
 
 	public String execute(SampleResult arg0, Sampler arg1) throws InvalidVariableException {
 
-
 		if (count > 0 && token !="") {
 			count = (count + 1) % 50;
-			//System.out.println("count is not 0, returning" + token);
 			return token;
 		}
 		count = (count + 1) % 10;   
 
-		JwtClaims claims = new JwtClaims();
-		claims.setIssuer(jwtIssuer);  
-
-		claims.setExpirationTimeMinutesInTheFuture(60); 
-		claims.setGeneratedJwtId(); 
-		claims.setIssuedAtToNow(); 
-		claims.setSubject(jwtSubject); 
-		claims.setClaim("upn", jwtSubject); 
-		List<String> groups = Arrays.asList(jwtGroup);
-		claims.setStringListClaim("groups", groups);
-		claims.setJwtId("jti");
-
-		JsonWebSignature jws = new JsonWebSignature();
-		jws.setPayload(claims.toJson());
-		jws.setKey(privateKey);      
-		jws.setAlgorithmHeaderValue("RS256");
-		jws.setHeader("typ", "JWT");
-
 		try {
+
+			JwtClaims claims = new JwtClaims();
+			claims.setIssuer(jwtIssuer);  
+
+			claims.setExpirationTimeMinutesInTheFuture(15); 
+			claims.setGeneratedJwtId(); 
+			claims.setIssuedAtToNow(); 
+			claims.setSubject(jwtSubject); 
+			claims.setClaim("upn", jwtSubject); 
+			List<String> groups = Arrays.asList(jwtGroup);
+			claims.setStringListClaim("groups", groups);
+
+			if (jwtAudience != null) {
+				claims.setAudience(jwtAudience);
+			}
+
+			JsonWebSignature jws = new JsonWebSignature();
+			jws.setPayload(claims.toJson());
+			jws.setKey(privateKey);      
+			jws.setAlgorithmHeaderValue("RS256");
+			jws.setHeader("typ", "JWT");
 			String innerJwt = jws.getCompactSerialization();
-
-
+		
 			JsonWebEncryption jwe = new JsonWebEncryption();
-			jwe.setAlgorithmHeaderValue("RSA-OAEP-256");
+			jwe.setAlgorithmHeaderValue(JWE_ALGORITHM_HEADER_VALUE);
 			jwe.setEncryptionMethodHeaderParameter(ContentEncryptionAlgorithmIdentifiers.AES_256_GCM);
-
-
 			jwe.setKey(publicKey);
 			jwe.setContentTypeHeaderValue("JWT");
 			jwe.setPayload(innerJwt);
-
-			String finalJwt = jwe.getCompactSerialization();
-
-
-
-			return finalJwt;
+			token = jwe.getCompactSerialization();
+			
 		} catch (Exception e) {
-			e.printStackTrace();
-			return "";
+			e.printStackTrace();		
 		}
+	
+		return token;
 
 	}
 	@Override
